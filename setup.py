@@ -22,6 +22,9 @@ setup(
         "PyCryptodome",
         "html2text",
         "tiktoken",
+        "click",
+        "inquirer",
+        "jinja2"
     ],
     test_suite="tests",
     long_description=long_description,
@@ -31,5 +34,9 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
+    entry_points={
+        'console_scripts': [
+            'paperqa=paperqa.cli:main',
+        ],
+    },
 )
-1
