@@ -9,7 +9,7 @@ from typing import Any, AsyncGenerator, Callable, Coroutine, Sequence, cast
 
 import numpy as np
 import tiktoken
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, RateLimitError
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .prompts import default_system_prompt
@@ -117,8 +117,26 @@ class EmbeddingModel(ABC, BaseModel):
 class OpenAIEmbeddingModel(EmbeddingModel):
     name: str = Field(default="text-embedding-ada-002")
 
-    async def embed_documents(self, client: Any, texts: list[str]) -> list[list[float]]:
-        return await embed_documents(cast(AsyncOpenAI, client), texts, self.name)
+    async def embed_documents(
+        self, client: AsyncOpenAI, texts: list[str]
+    ) -> list[list[float]]:
+        try:
+            from tenacity import (
+                retry,
+                retry_if_exception_type,
+                stop_after_attempt,
+                wait_incrementing,
+                wait_random,
+            )
+        except ImportError:
+            return await embed_documents(client, texts, self.name)
+
+        # Use tenacity to retry if hitting OpenAI tokens per minute error
+        return await retry(
+            retry=retry_if_exception_type(RateLimitError),
+            stop=stop_after_attempt(6),
+            wait=wait_incrementing(10, 10) + wait_random(max=5),
+        )(embed_documents)(client, texts, self.name)
 
 
 class SparseEmbeddingModel(EmbeddingModel):
