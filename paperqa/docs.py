@@ -96,12 +96,8 @@ class Docs(BaseModel):
 
     def __init__(self, **data):
         # We do it here because we need to move things to private attributes
-        embedding_client: Any | None = None
-        client: Any | None = None
-        if "embedding_client" in data:
-            embedding_client = data.pop("embedding_client")
-        if "client" in data:
-            client = data.pop("client")
+        client: Any | None = data.pop("client", None)
+        embedding_client: Any | None = data.pop("embedding_client", None)
         # backwards compatibility
         if "doc_index" in data:
             data["docs_index"] = data.pop("doc_index")
@@ -414,7 +410,7 @@ class Docs(BaseModel):
         """
         if doc.dockey in self.docs:
             return False
-        if len(texts) == 0:
+        if not texts:
             raise ValueError("No texts to add.")
         if doc.docname in self.docnames:
             new_docname = self._get_unique_name(doc.docname)
