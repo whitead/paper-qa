@@ -136,6 +136,9 @@ class EmbeddingModel(ABC, BaseModel):
 
 
 class OpenAIEmbeddingModel(EmbeddingModel):
+    # note this object is not serialized in docs
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     name: str = Field(default="text-embedding-ada-002")
     shared_semaphore: None | asyncio.Semaphore = None
 
@@ -178,6 +181,9 @@ class HybridEmbeddingModel(EmbeddingModel):
 
 class VoyageAIEmbeddingModel(EmbeddingModel):
     """A wrapper around Voyage AI's client lib."""
+
+    # note this object is not serialized in docs
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str = Field(default="voyage-large-2")
     embedding_type: EmbeddingModes = Field(default=EmbeddingModes.DOCUMENT)
