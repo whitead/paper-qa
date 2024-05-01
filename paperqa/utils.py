@@ -80,9 +80,16 @@ def md5sum(file_path: StrPath) -> str:
         return hashlib.md5(f.read()).hexdigest()  # noqa: S324
 
 
-async def gather_with_concurrency(n: int, coros: list[Coroutine]) -> list[Any]:
+async def gather_with_concurrency(
+    n: int, coros: list[Coroutine], shared_semaphore: None | asyncio.Semaphore = None
+) -> list[Any]:
+    """Gather using limited semaphore locks.
+
+    Note: if `shared_semaphore` is specified, n is ignored.
+
+    """
     # https://stackoverflow.com/a/61478547/2392535
-    semaphore = asyncio.Semaphore(n)
+    semaphore = shared_semaphore or asyncio.Semaphore(n)
 
     async def sem_coro(coro):
         async with semaphore:

@@ -88,7 +88,11 @@ def process_llm_config(
 
 
 async def embed_documents(
-    client: AsyncOpenAI, texts: list[str], embedding_model: str, batch_size: int = 16
+    client: AsyncOpenAI,
+    texts: list[str],
+    embedding_model: str,
+    batch_size: int = 16,
+    shared_semaphore: None | asyncio.Semaphore = None,
 ) -> list[list[float]]:
     """Embed a list of documents with batching."""
     if client is None:
@@ -97,13 +101,21 @@ async def embed_documents(
         )
     N = len(texts)
     embeddings = []
-    for i in range(0, N, batch_size):
-        response = await client.embeddings.create(
-            model=embedding_model,
-            input=texts[i : i + batch_size],
-            encoding_format="float",
-        )
-        embeddings.extend([e.embedding for e in response.data])
+
+    for r in await gather_with_concurrency(
+        1,
+        [
+            client.embeddings.create(
+                model=embedding_model,
+                input=texts[i : i + batch_size],
+                encoding_format="float",
+            )
+            for i in range(0, N, batch_size)
+        ],
+        shared_semaphore,
+    ):
+        embeddings.extend([e.embedding for e in r.data])
+
     return embeddings
 
 
@@ -125,9 +137,15 @@ class EmbeddingModel(ABC, BaseModel):
 
 class OpenAIEmbeddingModel(EmbeddingModel):
     name: str = Field(default="text-embedding-ada-002")
+    shared_semaphore: None | asyncio.Semaphore = None
 
     async def embed_documents(self, client: Any, texts: list[str]) -> list[list[float]]:
-        return await embed_documents(cast(AsyncOpenAI, client), texts, self.name)
+        return await embed_documents(
+            cast(AsyncOpenAI, client),
+            texts,
+            self.name,
+            shared_semaphore=self.shared_semaphore,
+        )
 
 
 class SparseEmbeddingModel(EmbeddingModel):
@@ -164,6 +182,7 @@ class VoyageAIEmbeddingModel(EmbeddingModel):
     name: str = Field(default="voyage-large-2")
     embedding_type: EmbeddingModes = Field(default=EmbeddingModes.DOCUMENT)
     batch_size: int = 10
+    shared_semaphore: None | asyncio.Semaphore = None
 
     def set_mode(self, mode: EmbeddingModes):
         self.embedding_type = mode
@@ -175,13 +194,21 @@ class VoyageAIEmbeddingModel(EmbeddingModel):
             )
         N = len(texts)
         embeddings = []
-        for i in range(0, N, self.batch_size):
-            response = await client.embed(
-                texts[i : i + self.batch_size],
-                model=self.name,
-                input_type=self.embedding_type.value,
-            )
-            embeddings.extend(response.embeddings)
+
+        for r in await gather_with_concurrency(
+            1,
+            [
+                client.embed(
+                    texts[i : i + self.batch_size],
+                    model=self.name,
+                    input_type=self.embedding_type.value,
+                )
+                for i in range(0, N, self.batch_size)
+            ],
+            self.shared_semaphore,
+        ):
+            embeddings.extend(r.embeddings)
+
         return embeddings
 
 
@@ -890,7 +917,7 @@ def embedding_model_factory(embedding: str, **kwargs) -> EmbeddingModel:
     if embedding.startswith("hybrid"):
         embedding_model_name = "-".join(embedding.split("-")[1:])
         dense_model = (
-            OpenAIEmbeddingModel(name=embedding_model_name)
+            OpenAIEmbeddingModel(name=embedding_model_name, **kwargs)
             if not embedding_model_name.startswith("voyage")
             else VoyageAIEmbeddingModel(name=embedding_model_name, **kwargs)
         )
